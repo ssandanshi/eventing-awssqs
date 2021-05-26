@@ -119,6 +119,21 @@ func (a *Adapter) Start(ctx context.Context, stopCh <-chan struct{}) error {
 	return a.pollLoop(ctx, q, stopCh)
 }
 
+func (a *Adapter) getDeleteMessageEntries(sqsMessages []*sqs.Message) (Entries []*sqs.DeleteMessageBatchRequestEntry) {
+    var list []*sqs.DeleteMessageBatchRequestEntry
+    for _, message := range sqsMessages {
+		// var entry *sqs.DeleteMessageBatchRequestEntry
+		// entry.Id = message.MessageId
+		// entry.ReceiptHandle = message.ReceiptHandle
+		
+        list = append(list, &sqs.DeleteMessageBatchRequestEntry {
+        	Id:            message.MessageId,
+        	ReceiptHandle: message.ReceiptHandle,
+        })
+    }
+    return list
+}
+
 // pollLoop continuously polls from the given SQS queue until stopCh
 // emits an element.  The
 func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct{}) error {
@@ -138,21 +153,37 @@ func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct
 			time.Sleep(a.OnFailedPollWaitSecs * time.Second)
 			continue
 		}
-		for _, m := range messages {
-			a.receiveMessage(ctx, m, func() {
-				_, err = q.DeleteMessage(&sqs.DeleteMessageInput{
-					QueueUrl:      &a.QueueURL,
-					ReceiptHandle: m.ReceiptHandle,
-				})
-				if err != nil {
-					// the only consequence is that the message will
-					// get redelivered later, given that SQS is
-					// at-least-once delivery. That should be
-					// acceptable as "normal operation"
-					logger.Error("Failed to delete message", zap.Error(err))
-				}
+		logger.Info("LENGTH OF MESSAGES RECEIVED is ", len(messages) )
+		
+		a.receiveMessages(ctx, messages, func() {
+			_, err = q.DeleteMessageBatch(&sqs.DeleteMessageBatchInput{
+				QueueUrl:      &a.QueueURL,
+				Entries: a.getDeleteMessageEntries(messages),
 			})
-		}
+			if err != nil {
+				// the only consequence is that the message will
+				// get redelivered later, given that SQS is
+				// at-least-once delivery. That should be
+				// acceptable as "normal operation"
+				logger.Error("Failed to delete message", zap.Error(err))
+			}
+		})
+		
+		// for _, m := range messages {
+		// 	a.receiveMessage(ctx, m, func() {
+		// 		_, err = q.DeleteMessage(&sqs.DeleteMessageInput{
+		// 			QueueUrl:      &a.QueueURL,
+		// 			ReceiptHandle: m.ReceiptHandle,
+		// 		})
+		// 		if err != nil {
+		// 			// the only consequence is that the message will
+		// 			// get redelivered later, given that SQS is
+		// 			// at-least-once delivery. That should be
+		// 			// acceptable as "normal operation"
+		// 			logger.Error("Failed to delete message", zap.Error(err))
+		// 		}
+		// 	})
+		// }
 	}
 }
 
@@ -166,6 +197,24 @@ func (a *Adapter) receiveMessage(ctx context.Context, m *sqs.Message, ack func()
 	ctx = cloudevents.ContextWithTarget(ctx, a.SinkURI)
 
 	err := a.postMessage(ctx, logger, m)
+	if err != nil {
+		logger.Infof("Event delivery failed: %s", err)
+	} else {
+		logger.Debug("Message successfully posted to Sink")
+		ack()
+	}
+}
+
+// receiveMessages handles an incoming list of message from the AWS SQS queue,
+// and forwards it to a Sink, calling `ack()` when the forwarding is
+// successful.
+func (a *Adapter) receiveMessages(ctx context.Context, messages []*sqs.Message, ack func()) {
+	logger := logging.FromContext(ctx).With(zap.Any("eventID", messages[0].MessageId)).With(zap.Any("sink", a.SinkURI))
+	logger.Debugw("Received messages from SQS:", zap.Any("messagesLength", len(messages)))
+
+	ctx = cloudevents.ContextWithTarget(ctx, a.SinkURI)
+
+	err := a.postMessages(ctx, logger, messages)
 	if err != nil {
 		logger.Infof("Event delivery failed: %s", err)
 	} else {
@@ -195,9 +244,44 @@ func (a *Adapter) makeEvent(m *sqs.Message) (*cloudevents.Event, error) {
 	return &event, nil
 }
 
+func (a *Adapter) makeBatchEvent(messages []*sqs.Message) (*cloudevents.Event, error) {
+	timestamp, err := strconv.ParseInt(*messages[0].Attributes["SentTimestamp"], 10, 64)
+	if err == nil {
+		//Convert to nanoseconds as sqs SentTimestamp is millisecond
+		timestamp = timestamp * int64(1000000)
+	} else {
+		timestamp = time.Now().UnixNano()
+	}
+
+	event := cloudevents.NewEvent(cloudevents.VersionV1)
+	event.SetID(*messages[0].MessageId)
+	event.SetType(sourcesv1alpha1.AwsSqsSourceEventType)
+	event.SetSource(cloudevents.ParseURIRef(a.QueueURL).String())
+	event.SetTime(time.Unix(0, timestamp))
+
+	if err := event.SetData(cloudevents.ApplicationJSON, messages); err != nil {
+		return nil, err
+	}
+	return &event, nil
+}
+
 // postMessage sends an SQS event to the SinkURI
 func (a *Adapter) postMessage(ctx context.Context, logger *zap.SugaredLogger, m *sqs.Message) error {
 	event, err := a.makeEvent(m)
+
+	if err != nil {
+		logger.Error("Cloud Event creation error", zap.Error(err))
+		return err
+	}
+	if result := a.client.Send(ctx, *event); !cloudevents.IsACK(result) {
+		logger.Error("Cloud Event delivery error", zap.Error(result))
+		return result
+	}
+	return nil
+}
+// postMessages sends an array of SQS events to the SinkURI
+func (a *Adapter) postMessages(ctx context.Context, logger *zap.SugaredLogger, messages []*sqs.Message) error {
+	event, err := a.makeBatchEvent(messages)
 
 	if err != nil {
 		logger.Error("Cloud Event creation error", zap.Error(err))
@@ -226,7 +310,7 @@ func poll(ctx context.Context, q *sqs.SQS, url string, maxBatchSize int64) ([]*s
 		// Controls the maximum time to wait in the poll performed with
 		// ReceiveMessageWithContext.  If there are no messages in the
 		// given secs, the call times out and returns control to us.
-		WaitTimeSeconds: aws.Int64(3),
+		WaitTimeSeconds: aws.Int64(5),
 	})
 
 	if err != nil {
