@@ -47,8 +47,8 @@ func MakeReceiveAdapter(args *ReceiveAdapterArgs) *v1.Deployment {
 	credsFile := ""
 	if args.Source.Spec.AwsCredsSecret != nil {
 		credsFile = fmt.Sprintf("%s/%s", credsMountPath, args.Source.Spec.AwsCredsSecret.Key)
-	}
-
+	}	
+	// TODO: Make this replicas configurable
 	replicas := int32(1)
 	annotations := map[string]string{"sidecar.istio.io/inject": "true"}
 	for k, v := range args.Source.Spec.Annotations {
@@ -64,6 +64,10 @@ func MakeReceiveAdapter(args *ReceiveAdapterArgs) *v1.Deployment {
 			Name:  "K_SINK",
 			Value: args.SinkURI,
 		},
+	}
+	maxBatchSizeProvided := args.Source.Spec.MaxBatchSize
+	if args.Source.Spec.AwsCredsSecret != nil {
+		envVars = append(envVars, corev1.EnvVar{Name: "AWS_SQS_MAX_BATCH_SIZE", Value: maxBatchSizeProvided})
 	}
 
 	volMounts := []corev1.VolumeMount(nil)
@@ -110,6 +114,7 @@ func MakeReceiveAdapter(args *ReceiveAdapterArgs) *v1.Deployment {
 					Labels:      args.Labels,
 				},
 				Spec: corev1.PodSpec{
+					// TODO: Expose NodeSelector here so that we can leverage it per CR
 					ServiceAccountName: args.Source.Spec.ServiceAccountName,
 					Containers: []corev1.Container{
 						{

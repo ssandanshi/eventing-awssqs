@@ -58,6 +58,10 @@ type AwsSqsSourceSpec struct {
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 
+	// Max Message Size to poll from SQS
+	// +optional
+	MaxBatchSize string `json:"maxBatchSize,omitempty"`
+
 	// Sink is a reference to an object that will resolve to a domain name to
 	// use as the sink.  This is where events will be received.
 	// +optional
