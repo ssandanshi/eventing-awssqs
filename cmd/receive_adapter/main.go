@@ -39,6 +39,8 @@ const (
 
 	// envCredsFile is the path of the AWS credentials file
 	envCredsFile = "AWS_APPLICATION_CREDENTIALS"
+
+	envMaxBatchSize = "AWS_SQS_MAX_BATCH_SIZE"
 )
 
 func getRequiredEnv(envKey string) string {
@@ -64,7 +66,9 @@ func main() {
 		QueueURL:             getRequiredEnv(envQueueURL),
 		SinkURI:              getRequiredEnv(envSinkURI),
 		CredsFile:            os.Getenv(envCredsFile),
+		// TODO: make this configurable
 		OnFailedPollWaitSecs: 2,
+		MaxBatchSize:         os.Getenv(envMaxBatchSize),
 	}
 
 	logger.Info("Starting AWS SQS Receive Adapter.", zap.Any("adapter", adapter))

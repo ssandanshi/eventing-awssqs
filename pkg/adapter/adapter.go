@@ -45,6 +45,9 @@ type Adapter struct {
 	// CredsFile is the full path of the AWS credentials file
 	CredsFile string
 
+	// MaxBatchSize is the max Batch size to be polled form SQS
+	MaxBatchSize string
+
 	// OnFailedPollWaitSecs determines the interval to wait after a
 	// failed poll before making another one
 	OnFailedPollWaitSecs time.Duration
@@ -140,6 +143,12 @@ func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct
 
 	logger := logging.FromContext(ctx)
 
+
+	maxBatchSize, err := strconv.ParseInt(a.MaxBatchSize,10,64)
+	if err != nil {
+		logger.Error("Could not convert maxBatchSize from string to int", zap.Error(err))
+		maxBatchSize = 10
+	}
 	for {
 		select {
 		case <-stopCh:
@@ -147,7 +156,8 @@ func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct
 			return nil
 		default:
 		}
-		messages, err := poll(ctx, q, a.QueueURL, 10)
+		
+		messages, err := poll(ctx, q, a.QueueURL, maxBatchSize)
 		if err != nil {
 			logger.Warn("Failed to poll from SQS queue", zap.Error(err))
 			time.Sleep(a.OnFailedPollWaitSecs * time.Second)
@@ -310,7 +320,8 @@ func poll(ctx context.Context, q *sqs.SQS, url string, maxBatchSize int64) ([]*s
 		// Controls the maximum time to wait in the poll performed with
 		// ReceiveMessageWithContext.  If there are no messages in the
 		// given secs, the call times out and returns control to us.
-		WaitTimeSeconds: aws.Int64(5),
+		// TODO: expose this as ENV variable
+		WaitTimeSeconds: aws.Int64(5), 
 	})
 
 	if err != nil {
