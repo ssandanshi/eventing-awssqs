@@ -53,7 +53,12 @@ type Adapter struct {
 
 	// OnFailedPollWaitSecs determines the interval to wait after a
 	// failed poll before making another one
-	OnFailedPollWaitSecs time.Duration
+	OnFailedPollWaitSecs string
+
+	// WaitTimeSeconds Controls the maximum time to wait in the poll performed with
+	// ReceiveMessageWithContext.  If there are no messages in the
+	// given secs, the call times out and returns control to us.
+	WaitTimeSeconds string
 
 	// Client sends cloudevents to the target.
 	client cloudevents.Client
@@ -64,6 +69,9 @@ const (
 
 	defaultMaxBatchSize = 10
 	
+	defaultOnFailedPollWaitSecs = 2
+
+	defaultWaitTimeSeconds = 3
 )
 
 // getRegion takes an AWS SQS URL and extracts the region from it
@@ -134,11 +142,7 @@ func (a *Adapter) Start(ctx context.Context, stopCh <-chan struct{}) error {
 
 func (a *Adapter) getDeleteMessageEntries(sqsMessages []*sqs.Message) (Entries []*sqs.DeleteMessageBatchRequestEntry) {
     var list []*sqs.DeleteMessageBatchRequestEntry
-    for _, message := range sqsMessages {
-		// var entry *sqs.DeleteMessageBatchRequestEntry
-		// entry.Id = message.MessageId
-		// entry.ReceiptHandle = message.ReceiptHandle
-		
+    for _, message := range sqsMessages {	
         list = append(list, &sqs.DeleteMessageBatchRequestEntry {
         	Id:            message.MessageId,
         	ReceiptHandle: message.ReceiptHandle,
@@ -164,7 +168,19 @@ func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct
 		logger.Error("Could not convert sendBatchedResponse from string to bool, Defaulting to", defaultSendBatchedResponse, zap.Error(err))
 		sendBatchedResponse = defaultSendBatchedResponse
 	}
-	logger.Info("value from configs: MaxBatchSize: %d, SendBatchedResponse: %b", maxBatchSize, sendBatchedResponse)
+	onFailedPollWaitSecs, err := strconv.ParseInt(a.OnFailedPollWaitSecs,10,0)
+	if err != nil {
+		logger.Error("Could not convert onFailedPollWaitSecs from string to time.Duration. Defaulting to ", defaultOnFailedPollWaitSecs, zap.Error(err))
+		onFailedPollWaitSecs = defaultOnFailedPollWaitSecs
+	}
+	waitTimeSeconds, err := strconv.ParseInt(a.WaitTimeSeconds,10,64)
+	if err != nil {
+		logger.Error("Could not convert waitTimeSeconds from string to int. Defaulting to ", defaultWaitTimeSeconds, zap.Error(err))
+		waitTimeSeconds = defaultWaitTimeSeconds
+	}
+
+
+	logger.Infof("value from configs: MaxBatchSize: %d, SendBatchedResponse: , OnFailedPollWaitSecs: , WaitTimeSeconds: ", maxBatchSize, sendBatchedResponse, onFailedPollWaitSecs, waitTimeSeconds)
 
 
 	for {
@@ -175,10 +191,10 @@ func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct
 		default:
 		}
 		
-		messages, err := poll(ctx, q, a.QueueURL, maxBatchSize)
+		messages, err := poll(ctx, q, a.QueueURL, maxBatchSize, waitTimeSeconds)
 		if err != nil {
 			logger.Warn("Failed to poll from SQS queue", zap.Error(err))
-			time.Sleep(a.OnFailedPollWaitSecs * time.Second)
+			time.Sleep(time.Duration(onFailedPollWaitSecs) * time.Second)
 			continue
 		}
 		logger.Info("LENGTH OF MESSAGES RECEIVED is ", len(messages) )
@@ -326,7 +342,7 @@ func (a *Adapter) postMessages(ctx context.Context, logger *zap.SugaredLogger, m
 }
 
 // poll reads messages from the queue in batches of a given maximum size.
-func poll(ctx context.Context, q *sqs.SQS, url string, maxBatchSize int64) ([]*sqs.Message, error) {
+func poll(ctx context.Context, q *sqs.SQS, url string, maxBatchSize int64, waitTimeSeconds int64) ([]*sqs.Message, error) {
 
 	result, err := q.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
 		AttributeNames: []*string{
@@ -342,7 +358,7 @@ func poll(ctx context.Context, q *sqs.SQS, url string, maxBatchSize int64) ([]*s
 		// ReceiveMessageWithContext.  If there are no messages in the
 		// given secs, the call times out and returns control to us.
 		// TODO: expose this as ENV variable
-		WaitTimeSeconds: aws.Int64(5), 
+		WaitTimeSeconds: aws.Int64(waitTimeSeconds), 
 	})
 
 	if err != nil {
