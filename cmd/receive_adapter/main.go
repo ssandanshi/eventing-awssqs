@@ -41,6 +41,9 @@ const (
 	envCredsFile = "AWS_APPLICATION_CREDENTIALS"
 
 	envMaxBatchSize = "AWS_SQS_MAX_BATCH_SIZE"
+
+	envSendBatchedResponse = "AWS_SQS_SEND_BATCH_RESPONSE"
+	
 )
 
 func getRequiredEnv(envKey string) string {
@@ -69,6 +72,7 @@ func main() {
 		// TODO: make this configurable
 		OnFailedPollWaitSecs: 2,
 		MaxBatchSize:         os.Getenv(envMaxBatchSize),
+		SendBatchedResponse:  os.Getenv(envSendBatchedResponse),
 	}
 
 	logger.Info("Starting AWS SQS Receive Adapter.", zap.Any("adapter", adapter))

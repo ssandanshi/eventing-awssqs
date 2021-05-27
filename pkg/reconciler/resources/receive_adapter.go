@@ -66,8 +66,13 @@ func MakeReceiveAdapter(args *ReceiveAdapterArgs) *v1.Deployment {
 		},
 	}
 	maxBatchSizeProvided := args.Source.Spec.MaxBatchSize
-	if args.Source.Spec.AwsCredsSecret != nil {
+	if len(maxBatchSizeProvided) != 0 {
 		envVars = append(envVars, corev1.EnvVar{Name: "AWS_SQS_MAX_BATCH_SIZE", Value: maxBatchSizeProvided})
+	}
+
+	sendBatchedResponse := args.Source.Spec.SendBatchedResponse
+	if len(sendBatchedResponse) != 0 {
+		envVars = append(envVars, corev1.EnvVar{Name: "AWS_SQS_SEND_BATCH_RESPONSE", Value: sendBatchedResponse})
 	}
 
 	volMounts := []corev1.VolumeMount(nil)

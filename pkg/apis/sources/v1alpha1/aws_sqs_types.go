@@ -62,6 +62,10 @@ type AwsSqsSourceSpec struct {
 	// +optional
 	MaxBatchSize string `json:"maxBatchSize,omitempty"`
 
+	// SendBatchedResponse will send all messages recieved as a single HTTP event rather than individual
+	// +optional
+	SendBatchedResponse string `json:"sendBatchedResponse,omitempty"`
+
 	// Sink is a reference to an object that will resolve to a domain name to
 	// use as the sink.  This is where events will be received.
 	// +optional
