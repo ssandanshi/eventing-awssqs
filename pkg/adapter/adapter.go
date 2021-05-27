@@ -47,6 +47,9 @@ type Adapter struct {
 
 	// MaxBatchSize is the max Batch size to be polled form SQS
 	MaxBatchSize string
+	
+	// SendBatchedResponse is a flag which if enabled will send all messages received in one HTTP event
+	SendBatchedResponse string
 
 	// OnFailedPollWaitSecs determines the interval to wait after a
 	// failed poll before making another one
@@ -55,6 +58,13 @@ type Adapter struct {
 	// Client sends cloudevents to the target.
 	client cloudevents.Client
 }
+
+const (
+	defaultSendBatchedResponse = false
+
+	defaultMaxBatchSize = 10
+	
+)
 
 // getRegion takes an AWS SQS URL and extracts the region from it
 // e.g. URLs have this form:
@@ -146,9 +156,17 @@ func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct
 
 	maxBatchSize, err := strconv.ParseInt(a.MaxBatchSize,10,64)
 	if err != nil {
-		logger.Error("Could not convert maxBatchSize from string to int", zap.Error(err))
-		maxBatchSize = 10
+		logger.Error("Could not convert maxBatchSize from string to int. Defaulting to ", defaultMaxBatchSize, zap.Error(err))
+		maxBatchSize = defaultMaxBatchSize
 	}
+	sendBatchedResponse, err := strconv.ParseBool(a.SendBatchedResponse)
+	if err != nil {
+		logger.Error("Could not convert sendBatchedResponse from string to bool, Defaulting to", defaultSendBatchedResponse, zap.Error(err))
+		sendBatchedResponse = defaultSendBatchedResponse
+	}
+	logger.Info("value from configs: MaxBatchSize: %d, SendBatchedResponse: %b", maxBatchSize, sendBatchedResponse)
+
+
 	for {
 		select {
 		case <-stopCh:
@@ -165,35 +183,38 @@ func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct
 		}
 		logger.Info("LENGTH OF MESSAGES RECEIVED is ", len(messages) )
 		
-		a.receiveMessages(ctx, messages, func() {
-			_, err = q.DeleteMessageBatch(&sqs.DeleteMessageBatchInput{
-				QueueUrl:      &a.QueueURL,
-				Entries: a.getDeleteMessageEntries(messages),
+		if sendBatchedResponse {
+			a.receiveMessages(ctx, messages, func() {
+				_, err = q.DeleteMessageBatch(&sqs.DeleteMessageBatchInput{
+					QueueUrl:      &a.QueueURL,
+					Entries: a.getDeleteMessageEntries(messages),
+				})
+				if err != nil {
+					// the only consequence is that the message will
+					// get redelivered later, given that SQS is
+					// at-least-once delivery. That should be
+					// acceptable as "normal operation"
+					logger.Error("Failed to delete messages", zap.Error(err))
+				}
 			})
-			if err != nil {
-				// the only consequence is that the message will
-				// get redelivered later, given that SQS is
-				// at-least-once delivery. That should be
-				// acceptable as "normal operation"
-				logger.Error("Failed to delete message", zap.Error(err))
+		} else {
+			for _, m := range messages {
+				a.receiveMessage(ctx, m, func() {
+					_, err = q.DeleteMessage(&sqs.DeleteMessageInput{
+						QueueUrl:      &a.QueueURL,
+						ReceiptHandle: m.ReceiptHandle,
+					})
+					if err != nil {
+						// the only consequence is that the message will
+						// get redelivered later, given that SQS is
+						// at-least-once delivery. That should be
+						// acceptable as "normal operation"
+						logger.Error("Failed to delete message", zap.Error(err))
+					}
+				})
 			}
-		})
-		
-		// for _, m := range messages {
-		// 	a.receiveMessage(ctx, m, func() {
-		// 		_, err = q.DeleteMessage(&sqs.DeleteMessageInput{
-		// 			QueueUrl:      &a.QueueURL,
-		// 			ReceiptHandle: m.ReceiptHandle,
-		// 		})
-		// 		if err != nil {
-		// 			// the only consequence is that the message will
-		// 			// get redelivered later, given that SQS is
-		// 			// at-least-once delivery. That should be
-		// 			// acceptable as "normal operation"
-		// 			logger.Error("Failed to delete message", zap.Error(err))
-		// 		}
-		// 	})
-		// }
+
+		}
 	}
 }
 
