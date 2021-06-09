@@ -160,27 +160,27 @@ func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct
 
 	maxBatchSize, err := strconv.ParseInt(a.MaxBatchSize,10,64)
 	if err != nil {
-		logger.Error("Could not convert maxBatchSize from string to int. Defaulting to ", defaultMaxBatchSize, zap.Error(err))
+		logger.Error("Could not Find or convert maxBatchSize from string to int. Defaulting to ", defaultMaxBatchSize, zap.Error(err))
 		maxBatchSize = defaultMaxBatchSize
 	}
 	sendBatchedResponse, err := strconv.ParseBool(a.SendBatchedResponse)
 	if err != nil {
-		logger.Error("Could not convert sendBatchedResponse from string to bool, Defaulting to", defaultSendBatchedResponse, zap.Error(err))
+		logger.Error("Could not Find or convert sendBatchedResponse from string to bool, Defaulting to", defaultSendBatchedResponse, zap.Error(err))
 		sendBatchedResponse = defaultSendBatchedResponse
 	}
 	onFailedPollWaitSecs, err := strconv.ParseInt(a.OnFailedPollWaitSecs,10,0)
 	if err != nil {
-		logger.Error("Could not convert onFailedPollWaitSecs from string to time.Duration. Defaulting to ", defaultOnFailedPollWaitSecs, zap.Error(err))
+		logger.Error("Could not Find or convert onFailedPollWaitSecs from string to time.Duration. Defaulting to ", defaultOnFailedPollWaitSecs, zap.Error(err))
 		onFailedPollWaitSecs = defaultOnFailedPollWaitSecs
 	}
 	waitTimeSeconds, err := strconv.ParseInt(a.WaitTimeSeconds,10,64)
 	if err != nil {
-		logger.Error("Could not convert waitTimeSeconds from string to int. Defaulting to ", defaultWaitTimeSeconds, zap.Error(err))
+		logger.Error("Could not Find or convert waitTimeSeconds from string to int. Defaulting to ", defaultWaitTimeSeconds, zap.Error(err))
 		waitTimeSeconds = defaultWaitTimeSeconds
 	}
 
 
-	logger.Infof("value from configs: MaxBatchSize: %d, SendBatchedResponse: , OnFailedPollWaitSecs: , WaitTimeSeconds: ", maxBatchSize, sendBatchedResponse, onFailedPollWaitSecs, waitTimeSeconds)
+	logger.Infof("value from configs: MaxBatchSize: %d, SendBatchedResponse: %b, OnFailedPollWaitSecs: %d, WaitTimeSeconds: %d", maxBatchSize, sendBatchedResponse, onFailedPollWaitSecs, waitTimeSeconds)
 
 
 	for {
@@ -197,9 +197,8 @@ func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct
 			time.Sleep(time.Duration(onFailedPollWaitSecs) * time.Second)
 			continue
 		}
-		logger.Info("LENGTH OF MESSAGES RECEIVED is ", len(messages) )
 		
-		if sendBatchedResponse {
+		if (sendBatchedResponse && len(messages) > 0){
 			a.receiveMessages(ctx, messages, func() {
 				_, err = q.DeleteMessageBatch(&sqs.DeleteMessageBatchInput{
 					QueueUrl:      &a.QueueURL,
