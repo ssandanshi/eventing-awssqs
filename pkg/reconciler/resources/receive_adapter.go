@@ -133,10 +133,11 @@ func MakeReceiveAdapter(args *ReceiveAdapterArgs) *v1.Deployment {
 					ServiceAccountName: args.Source.Spec.ServiceAccountName,
 					Containers: []corev1.Container{
 						{
-							Name:         "receive-adapter",
-							Image:        args.Image,
-							Env:          envVars,
-							VolumeMounts: volMounts,
+							Name:         		"receive-adapter",
+							Image:        		args.Image,
+							ImagePullPolicy: 	corev1.PullIfNotPresent,
+							Env:         		envVars,
+							VolumeMounts: 		volMounts,
 						},
 					},
 					Volumes: vols,
