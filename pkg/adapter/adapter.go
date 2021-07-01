@@ -160,22 +160,22 @@ func (a *Adapter) pollLoop(ctx context.Context, q *sqs.SQS, stopCh <-chan struct
 
 	maxBatchSize, err := strconv.ParseInt(a.MaxBatchSize,10,64)
 	if err != nil {
-		logger.Error("Could not Find or convert maxBatchSize from string to int. Defaulting to ", defaultMaxBatchSize, zap.Error(err))
+		logger.Info("Could not Find or convert maxBatchSize from string to int. Defaulting to ", defaultMaxBatchSize, zap.Error(err))
 		maxBatchSize = defaultMaxBatchSize
 	}
 	sendBatchedResponse, err := strconv.ParseBool(a.SendBatchedResponse)
 	if err != nil {
-		logger.Error("Could not Find or convert sendBatchedResponse from string to bool, Defaulting to", defaultSendBatchedResponse, zap.Error(err))
+		logger.Info("Could not Find or convert sendBatchedResponse from string to bool, Defaulting to", defaultSendBatchedResponse, zap.Error(err))
 		sendBatchedResponse = defaultSendBatchedResponse
 	}
 	onFailedPollWaitSecs, err := strconv.ParseInt(a.OnFailedPollWaitSecs,10,0)
 	if err != nil {
-		logger.Error("Could not Find or convert onFailedPollWaitSecs from string to time.Duration. Defaulting to ", defaultOnFailedPollWaitSecs, zap.Error(err))
+		logger.Info("Could not Find or convert onFailedPollWaitSecs from string to time.Duration. Defaulting to ", defaultOnFailedPollWaitSecs, zap.Error(err))
 		onFailedPollWaitSecs = defaultOnFailedPollWaitSecs
 	}
 	waitTimeSeconds, err := strconv.ParseInt(a.WaitTimeSeconds,10,64)
 	if err != nil {
-		logger.Error("Could not Find or convert waitTimeSeconds from string to int. Defaulting to ", defaultWaitTimeSeconds, zap.Error(err))
+		logger.Info("Could not Find or convert waitTimeSeconds from string to int. Defaulting to ", defaultWaitTimeSeconds, zap.Error(err))
 		waitTimeSeconds = defaultWaitTimeSeconds
 	}
 
