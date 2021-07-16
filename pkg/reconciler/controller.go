@@ -64,7 +64,6 @@ func NewController(
 	r.sinkResolver = resolver.NewURIResolver(ctx, impl.EnqueueKey)
 
 	logger.Info("Setting up event handlers.")
-	logger.Info("TESTING OUT LOGGING.")
 
 	awssqssourceInformer.Informer().AddEventHandler(controller.HandleAll(impl.Enqueue))
 

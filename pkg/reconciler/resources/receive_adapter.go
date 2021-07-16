@@ -48,12 +48,18 @@ func MakeReceiveAdapter(args *ReceiveAdapterArgs) *v1.Deployment {
 	if args.Source.Spec.AwsCredsSecret != nil {
 		credsFile = fmt.Sprintf("%s/%s", credsMountPath, args.Source.Spec.AwsCredsSecret.Key)
 	}	
-	// TODO: Make this replicas configurable
-	replicas := int32(1)
+
 	annotations := map[string]string{"sidecar.istio.io/inject": "true"}
 	for k, v := range args.Source.Spec.Annotations {
 		annotations[k] = v
 	}
+
+	nodeSelectorMap := map[string]string{}
+	for k, v := range args.Source.Spec.NodeSelector {
+		nodeSelectorMap[k] = v
+	}
+
+	nodeAffinityMap := args.Source.Spec.Affinity
 
 	envVars := []corev1.EnvVar{
 		{
@@ -84,6 +90,9 @@ func MakeReceiveAdapter(args *ReceiveAdapterArgs) *v1.Deployment {
 	if len(waitTimeSeconds) != 0 {
 		envVars = append(envVars, corev1.EnvVar{Name: "AWS_SQS_WAIT_TIME_SECONDS", Value: waitTimeSeconds})
 	}
+
+	replicasProvided := args.Source.Spec.Replicas
+	replicas := int32(replicasProvided)
 
 	volMounts := []corev1.VolumeMount(nil)
 	vols := []corev1.Volume(nil)
@@ -131,6 +140,8 @@ func MakeReceiveAdapter(args *ReceiveAdapterArgs) *v1.Deployment {
 				Spec: corev1.PodSpec{
 					// TODO: Expose NodeSelector here so that we can leverage it per CR
 					ServiceAccountName: args.Source.Spec.ServiceAccountName,
+					NodeSelector: nodeSelectorMap,
+					Affinity: &nodeAffinityMap,
 					Containers: []corev1.Container{
 						{
 							Name:         		"receive-adapter",
