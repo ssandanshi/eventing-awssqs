@@ -58,6 +58,36 @@ type AwsSqsSourceSpec struct {
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 
+	// Number of replicas for the SQS Adapter
+	// +optional
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// Node Selector to add to the pod
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Affinity to add to the pod
+	// +optional
+	Affinity corev1.Affinity `json:"affinity,omitempty"`
+
+	// Max Message Size to poll from SQS
+	// +optional
+	MaxBatchSize string `json:"maxBatchSize,omitempty"`
+
+	// SendBatchedResponse will send all messages recieved as a single HTTP event rather than individual event per message
+	// +optional
+	SendBatchedResponse string `json:"sendBatchedResponse,omitempty"`
+
+	// OnFailedPollWaitSecs sets the time SQSSource sleeps if it failed to poll from SQS
+	// +optional
+	OnFailedPollWaitSecs string `json:"onFailedPollWaitSecs,omitempty"`
+
+	// WaitTimeSeconds Controls the maximum time to wait in the poll performed with
+	// ReceiveMessageWithContext.  If there are no messages in the
+	// given secs, the call times out and returns control to us.
+	// +optional
+	WaitTimeSeconds string `json:"waitTimeSeconds,omitempty"`
+
 	// Sink is a reference to an object that will resolve to a domain name to
 	// use as the sink.  This is where events will be received.
 	// +optional
